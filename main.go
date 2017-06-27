@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"time"
 
 	"github.com/go-kit/kit/endpoint"
 	"github.com/go-kit/kit/log"
@@ -16,33 +15,10 @@ import (
 )
 
 var (
+	ErrBadRequest  = errors.New("bad request")
 	ErrBadRouting  = errors.New("inconsistent mapping between route and handler (programmer error)")
-	ErrInvalidName = errors.New("The provided name is invalid")
+	ErrInvalidName = errors.New("the provided name is invalid")
 )
-
-type HiWorldService interface {
-	Salutate(string) string
-	Bye(string) string
-}
-
-type hiWorldService struct{}
-
-func (hiWorldService) Salutate(name string) string {
-	return fmt.Sprintf("Hi %s!", name)
-}
-
-func (hiWorldService) Bye(name string) string {
-	return fmt.Sprintf("bye %s", name)
-}
-
-type hiWorldRequest struct {
-	Name string `json:"name"`
-}
-
-type hiWorldResponse struct {
-	V   string `json:"v"`
-	Err string `json:"err,omitempty"` // errors don't JSON-marshal, so we use a string
-}
 
 func makeSalutateEndpoint(svc HiWorldService) endpoint.Endpoint {
 	return func(ctx context.Context, request interface{}) (interface{}, error) {
@@ -65,7 +41,7 @@ func makeByeEndpoint(svc HiWorldService) endpoint.Endpoint {
 func decodeSalutateRequest(_ context.Context, r *http.Request) (interface{}, error) {
 	var request hiWorldRequest // empty for now
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		return nil, err
+		return nil, ErrBadRequest
 	}
 	return request, nil
 }
@@ -81,39 +57,6 @@ func decodeByeRequest(_ context.Context, r *http.Request) (interface{}, error) {
 
 func encodeResponse(_ context.Context, w http.ResponseWriter, response interface{}) error {
 	return json.NewEncoder(w).Encode(response)
-}
-
-type loggingMiddleware struct {
-	logger log.Logger
-	next   HiWorldService
-}
-
-func (mw loggingMiddleware) Salutate(name string) (output string) {
-	defer func(begin time.Time) {
-		_ = mw.logger.Log(
-			"method", "salutate",
-			"input", name,
-			"output", output,
-			"took", time.Since(begin),
-		)
-	}(time.Now())
-
-	output = mw.next.Salutate(name)
-	return output
-}
-
-func (mw loggingMiddleware) Bye(name string) (output string) {
-	defer func(begin time.Time) {
-		_ = mw.logger.Log(
-			"method", "bye",
-			"input", name,
-			"output", output,
-			"took", time.Since(begin),
-		)
-	}(time.Now())
-
-	output = mw.next.Bye(name)
-	return output
 }
 
 func main() {
@@ -151,25 +94,8 @@ func main() {
 	// ws.Route(ws.GET("/bye/{name}").To(byeHandler))
 	// restful.Add(ws)
 
-	logger.Log("err", http.ListenAndServe(":8080", r))
-}
-
-func encodeError(_ context.Context, err error, w http.ResponseWriter) {
-	if err == nil {
-		panic("encodeError with nil error")
-	}
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.WriteHeader(codeFrom(err))
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"error": err.Error(),
-	})
-}
-
-func codeFrom(err error) int {
-	switch err {
-	case ErrBadRouting:
-		return http.StatusNotFound
-	default:
-		return http.StatusInternalServerError
-	}
+	var port = 8080
+	hostAndPort := fmt.Sprintf(":%d", port)
+	logger.Log("info", "Listening on "+hostAndPort)
+	logger.Log("err", http.ListenAndServe(hostAndPort, r))
 }
