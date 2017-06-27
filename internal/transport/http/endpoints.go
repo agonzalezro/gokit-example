@@ -3,7 +3,7 @@ package http
 import (
 	"context"
 
-	"github.com/agonzalezro/alex-gokit-example/service/hiworld"
+	"github.com/agonzalezro/gokit-example/service/hiworld"
 	"github.com/go-kit/kit/endpoint"
 )
 

@@ -3,7 +3,7 @@ package middleware
 import (
 	"time"
 
-	"github.com/agonzalezro/alex-gokit-example/service/hiworld"
+	"github.com/agonzalezro/gokit-example/service/hiworld"
 	"github.com/go-kit/kit/log"
 )
 

@@ -3,7 +3,7 @@ package grpc
 import (
 	"context"
 
-	"github.com/agonzalezro/alex-gokit-example/pb"
+	"github.com/agonzalezro/gokit-example/pb"
 )
 
 type Request struct {

@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/agonzalezro/alex-gokit-example/pb"
+	"github.com/agonzalezro/gokit-example/pb"
 	"google.golang.org/grpc"
 
 	"flag"
