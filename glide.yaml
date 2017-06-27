@@ -1,4 +1,4 @@
-package: github.com/agonzalezro/hiworld
+package: github.com/agonzalezro/alex-gokit-example
 import:
 - package: github.com/go-kit/kit
   version: ~0.4.0
