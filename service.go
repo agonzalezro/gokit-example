@@ -3,13 +3,13 @@ package main
 import "fmt"
 
 type HiWorldService interface {
-	Salutate(string) string
+	Hi(string) string
 	Bye(string) string
 }
 
 type hiWorldService struct{}
 
-func (hiWorldService) Salutate(name string) string {
+func (hiWorldService) Hi(name string) string {
 	return fmt.Sprintf("Hi %s!", name)
 }
 

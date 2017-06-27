@@ -11,17 +11,17 @@ type loggingMiddleware struct {
 	next   HiWorldService
 }
 
-func (mw loggingMiddleware) Salutate(name string) (output string) {
+func (mw loggingMiddleware) Hi(name string) (output string) {
 	defer func(begin time.Time) {
 		_ = mw.logger.Log(
-			"method", "salutate",
+			"method", "hi",
 			"input", name,
 			"output", output,
 			"took", time.Since(begin),
 		)
 	}(time.Now())
 
-	output = mw.next.Salutate(name)
+	output = mw.next.Hi(name)
 	return output
 }
 

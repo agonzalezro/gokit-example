@@ -2,14 +2,19 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 
+	oldcontext "golang.org/x/net/context"
+	"google.golang.org/grpc"
+
+	"github.com/agonzalezro/hiworld/pb"
 	"github.com/go-kit/kit/endpoint"
 	"github.com/go-kit/kit/log"
+	grpctransport "github.com/go-kit/kit/transport/grpc"
 	httptransport "github.com/go-kit/kit/transport/http"
 	"github.com/gorilla/mux"
 )
@@ -20,13 +25,13 @@ var (
 	ErrInvalidName = errors.New("the provided name is invalid")
 )
 
-func makeSalutateEndpoint(svc HiWorldService) endpoint.Endpoint {
+func makeHiEndpoint(svc HiWorldService) endpoint.Endpoint {
 	return func(ctx context.Context, request interface{}) (interface{}, error) {
 		req := request.(hiWorldRequest)
 		if req.Name == "pepe" {
 			return nil, ErrInvalidName
 		}
-		v := svc.Salutate(req.Name)
+		v := svc.Hi(req.Name)
 		return hiWorldResponse{v, ""}, nil
 	}
 }
@@ -38,27 +43,6 @@ func makeByeEndpoint(svc HiWorldService) endpoint.Endpoint {
 	}
 }
 
-func decodeSalutateRequest(_ context.Context, r *http.Request) (interface{}, error) {
-	var request hiWorldRequest // empty for now
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		return nil, ErrBadRequest
-	}
-	return request, nil
-}
-
-func decodeByeRequest(_ context.Context, r *http.Request) (interface{}, error) {
-	vars := mux.Vars(r)
-	name, ok := vars["name"]
-	if !ok {
-		return nil, ErrBadRouting
-	}
-	return hiWorldRequest{Name: name}, nil
-}
-
-func encodeResponse(_ context.Context, w http.ResponseWriter, response interface{}) error {
-	return json.NewEncoder(w).Encode(response)
-}
-
 func main() {
 	logger := log.NewLogfmtLogger(os.Stderr)
 
@@ -66,36 +50,71 @@ func main() {
 	svc = hiWorldService{}
 	svc = loggingMiddleware{logger, svc}
 
-	options := []httptransport.ServerOption{
-		httptransport.ServerErrorLogger(logger),
-		httptransport.ServerErrorEncoder(encodeError),
+	hiEndpoint := makeHiEndpoint(svc)
+	byeEndpoint := makeByeEndpoint(svc)
+
+	go func() {
+		options := []httptransport.ServerOption{
+			httptransport.ServerErrorLogger(logger),
+			httptransport.ServerErrorEncoder(encodeError),
+		}
+
+		hiHandler := httptransport.NewServer(
+			hiEndpoint,
+			decodeHiRequest,
+			encodeResponse,
+			options...,
+		)
+
+		byeHandler := httptransport.NewServer(
+			byeEndpoint,
+			decodeByeRequest,
+			encodeResponse,
+			options...,
+		)
+
+		r := mux.NewRouter()
+		r.Path("/hi").Handler(hiHandler)
+		r.Methods("GET").Path("/bye/{name}").Handler(byeHandler)
+
+		var port = 8080
+		hostAndPort := fmt.Sprintf(":%d", port)
+		logger.Log("info", "HTTP listening on "+hostAndPort)
+		logger.Log("err", http.ListenAndServe(hostAndPort, r))
+	}()
+
+	ln, err := net.Listen("tcp", ":8081")
+	if err != nil {
+		logger.Log("err", err)
+		return
 	}
 
-	salutateHandler := httptransport.NewServer(
-		makeSalutateEndpoint(svc),
-		decodeSalutateRequest,
-		encodeResponse,
-		options...,
-	)
+	options := []grpctransport.ServerOption{
+		grpctransport.ServerErrorLogger(logger),
+	}
 
-	byeHandler := httptransport.NewServer(
-		makeByeEndpoint(svc),
-		decodeByeRequest,
-		encodeResponse,
-		options...,
-	)
+	srv := &grpcServer{
+		hi: grpctransport.NewServer(
+			hiEndpoint,
+			DecodeGRPCHiRequest,
+			EncodeGRPCHiResponse,
+			options...,
+		),
+	}
 
-	r := mux.NewRouter()
-	r.Path("/hi").Handler(salutateHandler)
-	r.Methods("GET").Path("/bye/{name}").Handler(byeHandler)
+	s := grpc.NewServer()
+	pb.RegisterHelloServer(s, srv)
 
-	// ws := new(restful.WebService)
-	// ws.Route(ws.GET("/hi").To(salutateHandler))
-	// ws.Route(ws.GET("/bye/{name}").To(byeHandler))
-	// restful.Add(ws)
+	logger.Log("info", "grpc listening on :8081")
+	logger.Log("err", s.Serve(ln))
+}
 
-	var port = 8080
-	hostAndPort := fmt.Sprintf(":%d", port)
-	logger.Log("info", "Listening on "+hostAndPort)
-	logger.Log("err", http.ListenAndServe(hostAndPort, r))
+type grpcServer struct{ hi grpctransport.Handler }
+
+func (s *grpcServer) Hi(ctx oldcontext.Context, req *pb.HiRequest) (*pb.HiReply, error) {
+	_, rep, err := s.hi.ServeGRPC(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return rep.(*pb.HiReply), nil
 }
